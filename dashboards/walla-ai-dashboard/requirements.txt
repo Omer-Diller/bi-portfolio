@@ -1,0 +1,10 @@
+streamlit
+google-cloud-bigquery
+google-generativeai
+plotly
+pandas
+openpyxl
+python-dotenv
+google-auth
+db-dtypes
+pyarrow
