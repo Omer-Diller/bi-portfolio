@@ -1,4 +1,4 @@
-# 📖 Walla AI Dashboard — מדריך מלא
+# 📖 Walla AI Dashboard — Project Story
 ## איך בניתי דשבורד AI לניתוח נתונים בשפה טבעית — מהרעיון ועד הפרסום
 
 ---
@@ -19,285 +19,75 @@
         ↓
 Gemini 2.5 Flash (מתרגם לSQL)
         ↓
-BigQuery — Mart_Content_Performance
+BigQuery — Mart_Content_Performance / Mart_Video_Performance
         ↓
-Streamlit (מציג טבלה + גרף)
+Streamlit (מציג טבלה + גרף + הסבר + תובנה)
         ↓
 תשובה למשתמש
 ```
 
----
-
-## 📦 שלב 1 — התקנת הסביבה
-
-### Python
-```bash
-# התקן Python מ-python.org
-python --version  # לוודא שעובד
-```
-
-### חבילות נדרשות
-```bash
-pip install streamlit google-cloud-bigquery google-generativeai plotly pandas openpyxl python-dotenv
-```
-
-### קובץ .env (מפתחות סודיים)
-```
-GEMINI_API_KEY=AIza...
-```
-⚠️ **אל תעלה קובץ זה ל-GitHub!** — מוגן ע"י `.gitignore`
-
-### חיבור BigQuery (מחשב מקומי)
-```bash
-gcloud auth application-default login
-```
+**Stack:** Python · Streamlit · Google BigQuery · Gemini 2.5 Flash · Plotly · GitHub · Streamlit Cloud
 
 ---
 
-## 📊 שלב 2 — בניית הנתונים ב-BigQuery
+## 🔑 אתגרים טכניים שפתרתי
 
-### המבנה
+### 1. כפילויות נתונים — בעיית JOIN עם וידאו
+בגרסה ראשונה חיברנו את נתוני הוידאו לטבלה הראשית דרך JOIN — זה יצר כפילויות חמורות. כתבה עם 213,000 צפיות הראתה 23 מיליון. הסיבה: טבלת הוידאו מכילה כמה שורות ביום לכל כתבה.
 
-```
-editorial_performance_daily_v2   ← טבלת בסיס (Web + Walla App + Sport App)
-        +
-editorial_staff_mapping          ← VIEW לכותבים ועורכים
-        +
-editorial_video_daily            ← נתוני וידאו
-        ↓
-Mart_Content_Performance         ← טבלת MART — הכל במקום אחד
-```
+**הפתרון:** שתי טבלאות MART נפרדות — `Mart_Content_Performance` ו-`Mart_Video_Performance`. ה-AI יודע לעשות JOIN ביניהן כשצריך.
 
-### למה MART?
-- ✅ שאילתות פשוטות — ה-AI לא צריך לעשות JOINs
-- ✅ ביצועים טובים יותר
-- ✅ אין בעיות הרשאות של External Tables
+### 2. גרנולריות יתר — page_location
+שמירת URL מלא (`page_location`) יצרה אלפי שורות לכל כתבה כי כל URL עם query string שונה נחשב שורה נפרדת.
 
-### יצירת הטבלאות — הסדר הנכון
-```sql
--- 1. טבלת בסיס
--- הרץ: editorial_performance_daily_v2.sql
+**הפתרון:** החלפה ל-`hostname` (תת-דומיין כמו `news.walla.co.il`) — מספר ערכים קבועים בלבד.
 
--- 2. VIEW לכותבים/עורכים
--- הרץ: editorial_staff_mapping_view.sql
+### 3. HLL Sketches לגולשים ייחודיים
+`COUNT(DISTINCT user_id)` איטי על מיליוני שורות. השתמשנו ב-HLL (HyperLogLog) sketches — מהיר ומדויק לניתוח עסקי.
 
--- 3. וידאו
--- הרץ: editorial_video_daily.sql
+### 4. לוגיקת page_type
+הטבלה מכילה סוגי תוכן שונים — כתבות, דפי מדור, דף בית, מבזקים, ממומן. הגדרנו לוגיקה ב-SCHEMA שמסבירה ל-AI מתי לסנן לפי `page_type` ומתי לא.
 
--- 4. MART
--- הרץ: Mart_Content_Performance.sql (החלק CREATE OR REPLACE)
-```
-
-### Scheduled Query — עדכון יומי
-ב-BigQuery Console → Scheduled Queries → Create:
-- **שם:** Mart_Content_Performance_Daily
-- **זמן:** 06:00 כל יום
-- **SQL:** החלק DELETE + INSERT מ-Mart_Content_Performance.sql
-
-### HLL Sketches — חישוב גולשים ייחודיים
-```sql
--- ❌ ישן — COUNT DISTINCT (איטי, לא מתאים לנתונים גדולים)
-COUNT(DISTINCT user_pseudo_id)
-
--- ✅ חדש — HLL (מהיר, מדויק לניתוח עסקי)
-HLL_COUNT.MERGE(users_sketch)
-HLL_COUNT.MERGE(sessions_sketch)
-```
+### 5. מדור "אסור לפספס"
+כותב זה משויך טכנית למדור חדשות אבל מייצר תוכן כיפי — הוספנו CASE ב-MART שנותן לו מדור משלו, כך שנתוני החדשות לא מזוהמים.
 
 ---
 
-## 💻 שלב 3 — בניית האפליקציה
+## ✨ פיצ'רים עיקריים
 
-### קובץ: app.py
+**ניתוח בשפה טבעית** — שאלות בעברית מתורגמות ל-SQL אוטומטית
 
-**מבנה הקוד:**
-```python
-# 1. הגדרות — API keys, חיבור BigQuery
-# 2. SCHEMA — מפת הנתונים ל-AI
-# 3. פונקציות — שאילתות, גרפים, דיווח טעויות
-# 4. ממשק Streamlit — צ'אט, היסטוריה, עיצוב
-```
+**גרף חכם** — Gemini עצמו מחליט האם להציג גרף ואיזה ציר תאריך להשתמש
 
-### ה-SCHEMA — הלב של הפרויקט
-```python
-SCHEMA = """
-טבלה ראשית: `wallabi-169712.Walla_Daily_Reports.Mart_Content_Performance`
+**הסבר + תובנה** — כל תוצאה מגיעה עם הסבר מה חיפשנו ותובנה על הממצאים
 
-כללים קריטיים:
-- צפיות = SUM(total_views)
-- גולשים = HLL_COUNT.MERGE(users_sketch)
-- סשנים = HLL_COUNT.MERGE(sessions_sketch)
-- אל תוסיף סינונים שלא נאמרו במפורש!
-...
-"""
-```
+**זיכרון שיחה** — הקשר של 6 הודעות אחרונות לשאלות המשך
 
-**למה SCHEMA חשוב?**
-ה-AI לא יודע את מבנה הנתונים שלך. ה-SCHEMA הוא ה"הוראות" שמסבירות לו איך לכתוב SQL נכון.
+**הורדה לאקסל** — כל תוצאה ניתנת להורדה מיידית
 
-### זרימת שאלה-תשובה
-```python
-def ask_data(question, history):
-    # 1. בנה prompt עם SCHEMA + היסטוריה
-    prompt = f"SCHEMA: {SCHEMA}\nשאלה: {question}"
-    
-    # 2. שלח ל-Gemini
-    response = client_ai.models.generate_content(prompt)
-    sql = clean_sql(response.text)
-    
-    # 3. הרץ ב-BigQuery
-    df = client_bq.query(sql).to_dataframe()
-    
-    return sql, df
-```
-
-### מערכת דיווח טעויות
-```python
-# המשתמש לוחץ 👎 → הדיווח נשמר ב-BigQuery
-def save_correction(question, sql, feedback):
-    row = {
-        "correction_date": datetime.utcnow().isoformat(),
-        "topic": "דיווח משתמש",
-        "rule": feedback[:500],
-        "reason": f"SQL: {sql[:200]}",
-        "example_question": question[:500]
-    }
-    client_bq.insert_rows_json("...AI_Corrections", [row])
-```
-
-### הרצה מקומית
-```bash
-python -m streamlit run app.py
-# פתח דפדפן: http://localhost:8501
-```
+**הודעת שגיאה ידידותית** — במקום שגיאה טכנית מבאסת, הדשבורד מסביר ומציע לנסח מחדש
 
 ---
 
-## 🚀 שלב 4 — פרסום ב-Streamlit Cloud
+## 📊 נתונים שה-Dashboard מנתח
 
-### GitHub — העלאת הקוד
-
-```bash
-# אתחול
-git init
-git remote add origin https://github.com/analytics-walla/dynamic-dashboard.git
-
-# העלאה
-git add app.py requirements.txt
-git commit -m "first commit"
-git branch -M main
-git push -u origin main
-```
-
-**חשוב:** `.gitignore` מונע העלאת קבצים רגישים:
-```gitignore
-.env
-__pycache__/
-*.json
-```
-
-### Streamlit Cloud
-
-1. לך ל-[share.streamlit.io](https://share.streamlit.io)
-2. התחבר עם GitHub
-3. בחר repo: `analytics-walla/dynamic-dashboard`
-4. Main file: `app.py`
-5. **Advanced Settings → Secrets:**
-```toml
-GEMINI_API_KEY = "AIza..."
-
-[gcp_service_account]
-type = "service_account"
-project_id = "wallabi-169712"
-private_key = "-----BEGIN PRIVATE KEY-----..."
-client_email = "streamlit-dashboard@wallabi-169712.iam.gserviceaccount.com"
-...
-```
-
-### Service Account — גישה ל-BigQuery מהענן
-
-1. Google Cloud Console → IAM → Service Accounts
-2. צור: `streamlit-dashboard`
-3. תפקידים: `BigQuery Data Viewer` + `BigQuery Job User` + `BigQuery Data Editor`
-4. צור JSON key → הכנס ל-Streamlit Secrets
-
-### קוד לקריאת credentials
-```python
-if "gcp_service_account" in st.secrets:
-    credentials = service_account.Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"]
-    )
-    client_bq = bigquery.Client(project=PROJECT_ID, credentials=credentials)
-else:
-    client_bq = bigquery.Client(project=PROJECT_ID)  # מחשב מקומי
-```
-
-### אבטחה
-**Manage app → Settings → Sharing → Only specific people**
-הוסף מיילים של המשתמשים המורשים — כולם נכנסים עם Google.
-
----
-
-## 🔄 שלב 5 — עדכון קוד (workflow יומיומי)
-
-```bash
-# 1. ערוך קוד ב-VS Code
-# 2. שמור Ctrl+S
-# 3. העלה:
-git add app.py
-git commit -m "תיאור השינוי"
-git push
-# Streamlit Cloud מתעדכן אוטומטית תוך דקה
-```
-
----
-
-## 🐛 בעיות נפוצות ופתרונות
-
-| בעיה | סיבה | פתרון |
-|------|------|--------|
-| `f0_` בשם עמודה | AI לא נתן שם לפונקציה | הוסף לSCHEMA: `SUM(total_views) AS total_views` |
-| תוצאה ריקה | AI הוסיף סינון מיותר | הוסף לSCHEMA: "אל תוסיף סינונים שלא נאמרו" |
-| `!=` במקום `=` | AI פירש "אתמול" כ"לא היום" | הוסף לSCHEMA: "תמיד = ולא !=" |
-| `TransportError` | אין credentials בענן | הוסף Service Account ל-Secrets |
-| `git push` נדחה | ענף לא מסונכרן | `git pull origin main` לאחר מכן `git push` |
-
----
-
-## 📁 קבצים בפרויקט
-
-| קובץ | תפקיד |
-|------|--------|
-| `app.py` | קוד הדשבורד המלא |
-| `requirements.txt` | חבילות Python |
-| `.env` | מפתחות API (לא ב-GitHub) |
-| `.gitignore` | קבצים שלא יעלו ל-GitHub |
-
-### יצירת requirements.txt
-```bash
-pip freeze > requirements.txt
-```
+- **צפיות, גולשים, סשנים** לפי מדור / כתב / עורך / פלטפורמה / תאריך
+- **תפוקת כותבים ועורכים** — כמה כתבות פרסמו, פער מהיעד
+- **ביצועי וידאו** — הפעלות, ספקים, מודעות
+- **ניתוח תנועה** — מקורות, מדיום, hostname
+- **השוואות** — מדורים, פלטפורמות, תקופות זמן
 
 ---
 
 ## 🎓 מה למדתי
 
-1. **MART Table** — פתר בעיות הרשאות ושיפר ביצועים
-2. **SCHEMA מפורט** — ההשקעה בכתיבת כללים ברורים חסכה הרבה טעויות
-3. **ברירת מחדל: אין סינונים** — AI נוטה להוסיף סינונים שמזיקים
-4. **HLL Sketches** — דרך מהירה ומדויקת לספור גולשים ייחודיים בנתונים גדולים
-5. **Service Account** — הדרך הנכונה לחבר אפליקציה בענן ל-BigQuery
+1. **SCHEMA הוא הלב** — ככל שהכללים ברורים יותר, כך ה-AI מדויק יותר
+2. **גרנולריות נכונה** — טבלת MART צריכה להיות בדיוק ברמה הנכונה — לא גסה מדי ולא דקה מדי
+3. **הפרד אחריות** — שתי טבלאות נפרדות עדיפות על JOIN מורכב
+4. **AI כשותף** — Gemini לא רק מתרגם SQL, הוא מחליט מתי להציג גרף ומה לאבחן בתוצאות
+5. **UX חשוב** — הודעות שגיאה ידידותיות + הסברים + תובנות הפכו את הכלי לנגיש
 
 ---
 
-## 🔁 איך לשחזר את הפרויקט
-
-1. `pip install -r requirements.txt`
-2. צור `.env` עם `GEMINI_API_KEY`
-3. הגדר BigQuery credentials
-4. הרץ `python -m streamlit run app.py`
-5. לפריסה בענן — ראה שלב 4 למעלה
-
----
-
-**Omer Diller — BI Developer, Walla News Analytics**
+**Omer Diller — BI Developer | Walla News Analytics**  
+`Python` · `BigQuery` · `Gemini AI` · `Streamlit` · `HLL Sketches` · `SQL`
