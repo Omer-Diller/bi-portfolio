@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 import os
 import pandas as pd
 import io
-from datetime import datetime
 
 load_dotenv()
 
@@ -37,83 +36,121 @@ else:
 # מפת הנתונים ל-AI
 # ============================================
 SCHEMA = """
-טבלה ראשית (השתמש רק בה!):
+טבלאות זמינות:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. טבלת תוכן ראשית (צפיות, גולשים, סשנים):
 `wallabi-169712.Walla_Daily_Reports.Mart_Content_Performance`
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 עמודות כלליות:
 - platform (STRING) — פלטפורמה: 'Web' / 'Walla_App' / 'Sport_App'
-- page_type (STRING) — סוג עמוד: 'item' / 'homepage' / 'section_page' / 'newsflash' / 'sponsored_content' / 'other'
+- page_type (STRING) — סוג עמוד — ראה לוגיקה מלאה בסעיף "סוג עמוד" למטה
 - event_date (DATE) — תאריך האירוע
 
 עמודות כתבה:
-- item_id (STRING) — מזהה ייחודי של כתבה
+- item_id (STRING) — מזהה ייחודי של כתבה (קיים רק ב-page_type = 'item' / 'newsflash' / 'sponsored_content')
 - item_title (STRING) — כותרת הכתבה
 - item_publication_date (DATE) — תאריך פרסום הכתבה
-- vertical_name (STRING) — מדור: 'חדשות', 'ספורט', 'תרבות', 'כסף'
+- vertical_name (STRING) — מדור. ערכים אפשריים:
+  'חדשות', 'ספורט', 'תרבות', 'כסף', 'אופנה', 'רכב', 'סלבס', 'אוכל', 'בריאות', 'תיירות', 'אסור לפספס'
+  - 'אסור לפספס' הוא תוכן כיפי המשויך טכנית לחדשות — כשמבקשים נתוני חדשות אל תכלול אותו אלא אם ביקשו במפורש
 - CategoryName (STRING) — תת-מדור
-- tohash (STRING) — תוכן ממומן (לא ריק = ממומן)
+- tohash (STRING) — מזהה קמפיין ממומן (קיים רק בתוכן ממומן)
 
 עמודות כותב ועורך:
 - item_author_provider (STRING) — שם הכותב או ספק התוכן
-- created_by_username (STRING) — שם משתמש של העורך שיצר את הכתבה
+- created_by_username (STRING) — שם משתמש של העורך
 - author_main_section (STRING) — מדור ראשי של הכותב
 - author_daily_goal (STRING) — יעד יומי של הכותב
 - editor_full_name (STRING) — שם מלא של העורך
 - editor_main_section (STRING) — מדור ראשי של העורך
 - editor_daily_goal (STRING) — יעד יומי של העורך
 
-עמודות מכשיר:
+עמודות מכשיר ותנועה:
 - device_category (STRING) — mobile / desktop / tablet
 - device_os (STRING) — iOS / Android / Windows / וכו'
-
-עמודות תנועה (Web בלבד):
-- page_location (STRING) — URL נקי של העמוד (קיים רק ב-Web, באפליקציה = NULL)
-- אם המשתמש שואל על עמוד/דף/URL ספציפי — סנן לפי page_location LIKE '%...%'
-- סינון לפי page_location מחזיר אוטומטית רק נתוני Web — אין צורך לסנן גם לפי platform
+- hostname (STRING) — תת-דומיין: 'news.walla.co.il' / 'sport.walla.co.il' / 'money.walla.co.il' (Web בלבד, באפליקציה = NULL)
 - traffic_source (STRING) — מקור התנועה (Web בלבד)
 - traffic_medium (STRING) — מדיום התנועה (Web בלבד)
 
-עמודות מדידה — חשוב מאוד:
-- total_views (INTEGER) — מספר צפיות (כבר מחושב — אל תשתמש ב-COUNT(*))
+עמודות מדידה:
+- total_views (INTEGER) — מספר צפיות — תמיד SUM!
 - users_sketch (BYTES) — HLL sketch לגולשים ייחודיים
 - sessions_sketch (BYTES) — HLL sketch לסשנים ייחודיים
-- video_users_sketch (BYTES) — HLL sketch לגולשים שהפעילו וידאו
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. טבלת וידאו:
+`wallabi-169712.Walla_Daily_Reports.Mart_Video_Performance`
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+עמודות זיהוי:
+- item_id (STRING) — מזהה כתבה
+- item_title (STRING) — כותרת הכתבה
+- item_author_provider (STRING) — שם הכותב
+- vertical_name (STRING) — מדור
+- CategoryName (STRING) — תת-מדור
+- tohash (STRING) — מזהה קמפיין ממומן
+- event_date (DATE) — תאריך
+- hostname (STRING) — תת-דומיין
+- device_category (STRING) — mobile / desktop / tablet
 
 עמודות וידאו:
-- total_video_plays (INTEGER) — מספר הפעלות וידאו
 - user_play (STRING) — האם המשתמש לחץ play ידנית
-- is_complete (STRING) — האם הוידאו הסתיים
 - video_provider_id (STRING) — ספק הוידאו
 - ads_provider (STRING) — ספק הפרסום
-- total_ads (INTEGER) — כמה מודעות הוצגו
+- is_complete (STRING) — האם הוידאו הסתיים
 
+עמודות מדידה:
+- total_video_plays (INTEGER) — מספר הפעלות — תמיד SUM!
+- total_ads (INTEGER) — מספר מודעות — תמיד SUM!
+- users_sketch (BYTES) — HLL sketch לגולשים שהפעילו וידאו
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ כללים קריטיים:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 # ספירות
 - צפיות = SUM(total_views) — לעולם אל תשתמש ב-COUNT(*) !
 - גולשים ייחודיים = HLL_COUNT.MERGE(users_sketch)
-- סשנים/ביקורים = HLL_COUNT.MERGE(sessions_sketch)
-- גולשי וידאו = HLL_COUNT.MERGE(video_users_sketch)
+- סשנים = HLL_COUNT.MERGE(sessions_sketch)
 - הפעלות וידאו = SUM(total_video_plays)
+- גולשי וידאו = HLL_COUNT.MERGE(users_sketch) מ-Mart_Video_Performance
 - כתבות ייחודיות = COUNT(DISTINCT item_id)
+
+# סוג עמוד — page_type — לוגיקה מלאה
+השתמש בעמודה page_type לסינון לפי הקשר השאלה:
+
+- כתבות / תכנים / כותב / עורך / תפוקה → page_type = 'item'
+- תוכן ממומן / קמפיין / שיווקי → page_type = 'sponsored_content'
+- מבזקים / מבזקי חדשות / פלאשים / חדשות מהירות → page_type = 'newsflash'
+- דף בית / הום פייג' / עמוד ראשי → page_type = 'homepage'
+- דף מדור / עמוד מדור / סקשן → page_type = 'section_page'
+- כמות פרסומים / תפוקת כותב / תפוקת עורך → page_type = 'item' לפי item_publication_date
+- צפיות כלליות / סך הכל / ללא ציון סוג → אין סינון על page_type + חובה לכלול page_type ב-SELECT
+
+# ניתוב בין טבלאות
+- שאלות על צפיות / גולשים / סשנים → Mart_Content_Performance
+- שאלות על וידאו / הפעלות / ספקי וידאו → Mart_Video_Performance
+- שאלות משולבות → JOIN לפי item_id AND event_date
 
 # כותבים
 - כותב = item_author_provider
 - יעד יומי כותב = SAFE_CAST(TRIM(author_daily_goal) AS INT64)
-- פער מיעד כותב = COUNT(DISTINCT item_id) - SAFE_CAST(TRIM(author_daily_goal) AS INT64)
+- פער מיעד = COUNT(DISTINCT item_id) - SAFE_CAST(TRIM(author_daily_goal) AS INT64)
 - מדור כותב = author_main_section
 - אם המשתמש שואל על יעד כותב — הצג: שם כותב, מדור, יעד יומי, כמה פרסם, פער מהיעד
 
 # עורכים
 - עורך = editor_full_name
 - יעד יומי עורך = SAFE_CAST(TRIM(editor_daily_goal) AS INT64)
-- פער מיעד עורך = COUNT(DISTINCT item_id) - SAFE_CAST(TRIM(editor_daily_goal) AS INT64)
+- פער מיעד = COUNT(DISTINCT item_id) - SAFE_CAST(TRIM(editor_daily_goal) AS INT64)
 - מדור עורך = editor_main_section
 - אם המשתמש שואל על יעד עורך — הצג: שם עורך, מדור, יעד יומי, כמה כתבות ערך, פער מהיעד
 
 # מדורים
-- מדור = vertical_name (ערכים: 'חדשות', 'ספורט', 'תרבות', 'כסף')
-- קטגוריה = CategoryName
+- מדור = vertical_name
+- כשמבקשים נתוני חדשות — אל תכלול vertical_name = 'אסור לפספס' אלא אם ביקשו במפורש
 
 # פלטפורמות
 - כל הפלטפורמות = אל תסנן לפי platform
@@ -139,9 +176,15 @@ SCHEMA = """
 
 # סינונים — ברירת מחדל: אין סינונים!
 - אל תוסיף שום סינון שלא נאמר במפורש
-- סנן לפי page_type רק אם המשתמש ציין סוג תוכן
+- סנן לפי page_type לפי הלוגיקה בסעיף "סוג עמוד" למעלה
 - סנן לפי platform רק אם המשתמש ציין פלטפורמה
 - סנן לפי traffic_source/medium רק אם המשתמש ציין מקור תנועה
+
+# מיון ברירת מחדל
+- תמיד מיין לפי המדד העיקרי בסדר יורד (DESC) — אלא אם המשתמש ציין אחרת
+  - שאלות על צפיות → ORDER BY total_views DESC
+  - שאלות על כמות כתבות / תפוקה → ORDER BY article_count DESC (או שם העמודה הרלוונטי)
+  - שאלות על גולשים → ORDER BY unique_users DESC
 
 # שמות עמודות
 - תן שמות ברורים תמיד — לא f0_, לא count
@@ -150,24 +193,6 @@ SCHEMA = """
 - HLL_COUNT.MERGE(sessions_sketch) AS sessions
 - אל תחשב ערכים מצטברים אלא אם התבקשת
 """
-
-# ============================================
-# פונקציית שמירת דיווח טעות
-# ============================================
-def save_correction(question, sql, feedback):
-    """שומר דיווח טעות ל-BigQuery לצפייה ידנית"""
-    row = {
-        "correction_date": datetime.utcnow().isoformat(),
-        "topic": "דיווח משתמש",
-        "rule": feedback[:500],
-        "reason": f"SQL: {sql[:200]}",
-        "example_question": question[:500]
-    }
-    errors = client_bq.insert_rows_json(
-        "wallabi-169712.Walla_Daily_Reports.AI_Corrections", [row]
-    )
-    if errors:
-        raise Exception(errors)
 
 # ============================================
 # פונקציות עזר
@@ -200,7 +225,22 @@ def ask_data(question, history):
 
 תרגם את השאלה הבאה לשאילתת SQL תקינה ל-BigQuery.
 אם השאלה מתייחסת לתוצאה קודמת — השתמש בהקשר מההיסטוריה.
-החזר רק את ה-SQL בלבד — בלי הסברים ובלי סימני קוד.
+
+⚠️ חוקים שחייבים להופיע בכל שאילתה:
+- צפיות = SUM(total_views) — לעולם לא COUNT(*)
+- כשמבקשים חדשות — אל תכלול vertical_name = 'אסור לפספס' אלא אם ביקשו במפורש
+- סנן לפי page_type לפי הקשר השאלה (ראה SCHEMA)
+- כשצפיות כלליות ללא ציון סוג תוכן — כלול page_type ב-SELECT ואל תסנן לפיו
+- תמיד תן שמות ברורים לעמודות
+
+החזר תשובה במבנה הבא בדיוק — ארבעה חלקים:
+
+CHART: yes או no — האם להציג גרף? yes רק אם השאלה מבקשת מגמה / השוואה לפי זמן / פירוט לפי תאריכים
+DATE_COL: שם עמודת התאריך לציר X (event_date / item_publication_date) — רק אם CHART: yes, אחרת none
+EXPLAIN: משפט קצר בעברית פשוטה — מה חיפשת, אילו סינונים הוספת, טווח תאריכים, איזו טבלה השתמשת
+INSIGHT: תובנה קצרה אחת על התוצאה (למשל: "שים לב שרוב הכתבות הן מספורט") — או none אם לא רלוונטי
+SQL:
+[שאילתת SQL בלבד, בלי הסברים ובלי סימני קוד]
 
 שאלה: {question}
 """
@@ -208,13 +248,46 @@ def ask_data(question, history):
         model="gemini-2.5-flash",
         contents=prompt
     )
-    sql = clean_sql(response.text)
-    df = client_bq.query(sql).to_dataframe()
-    return sql, df
 
-def show_chart(df, question):
-    date_col = next((c for c in df.columns if 'date' in c.lower()), None)
-    if date_col and len(df) > 1:
+    text = response.text.strip()
+
+    # פירוק התשובה
+    show_chart = False
+    date_col_override = None
+    explain = None
+    insight = None
+    sql = text
+
+    if "SQL:" in text:
+        lines = text.split("\n")
+        sql_lines = []
+        in_sql = False
+        for line in lines:
+            if line.startswith("CHART:"):
+                show_chart = "yes" in line.lower()
+            elif line.startswith("DATE_COL:"):
+                val = line.replace("DATE_COL:", "").strip()
+                date_col_override = val if val != "none" else None
+            elif line.startswith("EXPLAIN:"):
+                explain = line.replace("EXPLAIN:", "").strip()
+            elif line.startswith("INSIGHT:"):
+                val = line.replace("INSIGHT:", "").strip()
+                insight = val if val.lower() != "none" else None
+            elif line.startswith("SQL:"):
+                in_sql = True
+            elif in_sql:
+                sql_lines.append(line)
+        sql = "\n".join(sql_lines).strip()
+
+    sql = clean_sql(sql)
+    df = client_bq.query(sql).to_dataframe()
+    return sql, df, show_chart, date_col_override, explain, insight
+
+def show_chart(df, question, date_col_override=None):
+    date_col = date_col_override if date_col_override and date_col_override in df.columns else None
+    if not date_col:
+        return
+    if len(df) > 1:
         df[date_col] = pd.to_datetime(df[date_col]).dt.date
         preferred = [c for c in df.select_dtypes(include='number').columns
                      if not any(x in c.lower() for x in ['goal', 'id', 'session', 'ads'])]
@@ -238,10 +311,19 @@ def show_chart(df, question):
             st.plotly_chart(fig, use_container_width=True)
 
 def show_result(msg):
+    if msg.get("explain"):
+        st.markdown(f"🔍 **{msg['explain']}**")
+
     with st.expander("📝 SQL שנוצר"):
         st.code(msg["sql"], language="sql")
+
     st.dataframe(msg["df"], use_container_width=True)
-    show_chart(msg["df"].copy(), msg["content"])
+
+    if msg.get("show_chart", False):
+        show_chart(msg["df"].copy(), msg["content"], msg.get("date_col"))
+
+    if msg.get("insight"):
+        st.markdown(f"💡 **{msg['insight']}**")
 
     buffer = io.BytesIO()
     msg["df"].to_excel(buffer, index=False, engine='openpyxl')
@@ -253,24 +335,6 @@ def show_result(msg):
         mime="application/vnd.ms-excel",
         key=f"dl_{msg['id']}"
     )
-
-    if st.button("👎 יש בעיה בתשובה", key=f"bad_{msg['id']}"):
-        st.session_state[f"show_feedback_{msg['id']}"] = True
-
-    if st.session_state.get(f"show_feedback_{msg['id']}"):
-        feedback = st.text_input(
-            "מה לא נכון? (תאר בקצרה)",
-            placeholder="למשל: המספר נראה גבוה מדי",
-            key=f"feedback_{msg['id']}"
-        )
-        if st.button("📩 שלח דיווח", key=f"submit_{msg['id']}") and feedback:
-            with st.spinner("שומר דיווח..."):
-                try:
-                    save_correction(msg["question"], msg["sql"], feedback)
-                    st.success("✅ הדיווח נשמר! הצוות הטכני יבדוק ויתקן.")
-                    st.session_state[f"show_feedback_{msg['id']}"] = False
-                except Exception as e:
-                    st.error(f"שגיאה: {e}")
 
 # ============================================
 # עיצוב
@@ -302,6 +366,15 @@ st.markdown("""
         padding: 8px 20px !important; border-radius: 10px !important; border: none !important;
     }
     .stButton button:hover { background-color: #3451d1 !important; }
+    .tip-box {
+        background-color: #2a2d3e;
+        border-right: 3px solid #4361ee;
+        padding: 8px 14px;
+        border-radius: 8px;
+        color: #a0a0c0 !important;
+        font-size: 0.95rem !important;
+        margin-top: 8px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -327,6 +400,13 @@ for msg in st.session_state.messages:
 
 question = st.chat_input("מה תרצה לדעת?")
 
+# טיפ למשתמש
+st.markdown(
+    '<div class="tip-box">💡 טיפ: לשאלות המשך — נסח את כל הבקשה מחדש במשפט אחד מלא. '
+    'לדוגמה: "תן לי צפיות לפי מדור אתמול כולל שם כותב"</div>',
+    unsafe_allow_html=True
+)
+
 if question:
     st.session_state.messages.append({
         "role": "user",
@@ -335,19 +415,34 @@ if question:
 
     with st.spinner("⏳ מחשב..."):
         try:
-            sql, df = ask_data(question, st.session_state.messages)
+            sql, df, show_chart_flag, date_col, explain, insight = ask_data(question, st.session_state.messages)
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": f"נמצאו {len(df)} שורות תוצאה",
                 "sql": sql,
                 "df": df,
                 "question": question,
+                "show_chart": show_chart_flag,
+                "date_col": date_col,
+                "explain": explain,
+                "insight": insight,
                 "id": len(st.session_state.messages)
             })
         except Exception as e:
+            error_msg = str(e)
+            # הודעת שגיאה ידידותית
+            if "Syntax error" in error_msg or "invalidQuery" in error_msg or "Invalid" in error_msg:
+                friendly = (
+                    "❌ לא הצלחתי להבין את הבקשה ולבנות שאילתה תקינה.\n\n"
+                    "💡 נסה לנסח מחדש את השאלה במשפט אחד מלא ועצמאי, "
+                    "מבלי להתייחס לשאלות קודמות בשיחה."
+                )
+            else:
+                friendly = f"❌ שגיאה: {error_msg}"
+
             st.session_state.messages.append({
                 "role": "assistant",
-                "content": f"שגיאה: {e}"
+                "content": friendly
             })
 
     st.rerun()
