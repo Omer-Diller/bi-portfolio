@@ -1,15 +1,7 @@
--- ============================================================
--- editorial_performance_daily_v2 – שאילתה מורחבת
--- מכסה: Web + Walla App + Sport App
--- מימדים: device_category, device_os, page_location, traffic_source/medium
--- מדדים: total_views, unique_users (HLL), sessions (HLL)
--- rolling window: 5 ימים אחרונים, מחיקה אוטומטית > 14 חודש
--- ============================================================
-
 -- שלב 1: מחיקת 5 הימים האחרונים (לפני INSERT מחדש)
 DELETE FROM `wallabi-169712.Walla_Daily_Reports.editorial_performance_daily_v2`
-WHERE event_date BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 5 DAY)
-  AND CURRENT_DATE();
+WHERE event_date BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 05 DAY)
+AND DATE_SUB(CURRENT_DATE(), INTERVAL 00 DAY);
 
 -- שלב 2: INSERT מחדש עם נתונים מורחבים
 INSERT INTO `wallabi-169712.Walla_Daily_Reports.editorial_performance_daily_v2` (
@@ -26,7 +18,7 @@ INSERT INTO `wallabi-169712.Walla_Daily_Reports.editorial_performance_daily_v2` 
   item_publication_date,
   device_category,
   device_os,
-  page_location,
+  hostname,
   traffic_source,
   traffic_medium,
   total_views,
@@ -36,8 +28,8 @@ INSERT INTO `wallabi-169712.Walla_Daily_Reports.editorial_performance_daily_v2` 
 
 WITH DateRange AS (
   SELECT
-    FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 5 DAY)) AS start_date,
-    FORMAT_DATE('%Y%m%d', CURRENT_DATE())                            AS end_date
+    FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 05 DAY)) AS start_date,
+    FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 00 DAY)) AS end_date
 ),
 
 -- ============================================================
@@ -45,40 +37,30 @@ WITH DateRange AS (
 -- ============================================================
 Web_Raw AS (
   SELECT
-    PARSE_DATE('%Y%m%d', t.event_date)                                                                                                          AS event_date,
+    PARSE_DATE('%Y%m%d', t.event_date) AS event_date,
     t.event_timestamp,
     t.user_pseudo_id,
-    t.device.web_info.hostname                                                                                                                   AS hostname,
-    (SELECT p.value.int_value FROM UNNEST(t.event_params) p WHERE p.key = 'ga_session_id')                                                     AS ga_session_id,
-    (SELECT COALESCE(CAST(p.value.int_value AS STRING), p.value.string_value) FROM UNNEST(t.event_params) p WHERE p.key = 'item_id')            AS item_id,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'item_title')                                                      AS item_title,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'vertical_name')                                                   AS vertical_name,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'createdByUsername')                                               AS created_by_username,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'item_author')                                                     AS item_author,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'content_provider')                                               AS content_provider,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'CategoryName')                                                    AS CategoryName,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'tohash')                                                          AS tohash,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'item_publication_date')                                           AS item_publication_date,
-    REGEXP_REPLACE(
-      REGEXP_REPLACE(
-        (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'page_location'),
-        r'\?.*$', ''
-      ), r'#.*$', ''
-    )                                                                                                                                            AS page_location,
-    t.device.category                                                                                                                            AS device_category,
-    t.device.operating_system                                                                                                                    AS device_os,
-    t.traffic_source.source                                                                                                                      AS traffic_source,
-    t.traffic_source.medium                                                                                                                      AS traffic_medium
+    t.device.web_info.hostname AS hostname,
+    (SELECT p.value.int_value FROM UNNEST(t.event_params) p WHERE p.key = 'ga_session_id') AS ga_session_id,
+    (SELECT COALESCE(CAST(p.value.int_value AS STRING), p.value.string_value) FROM UNNEST(t.event_params) p WHERE p.key = 'item_id') AS item_id,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'item_title') AS item_title,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'vertical_name') AS vertical_name,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'createdByUsername') AS created_by_username,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'item_author') AS item_author,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'content_provider') AS content_provider,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'CategoryName') AS CategoryName,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'tohash') AS tohash,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'item_publication_date') AS item_publication_date,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'page_location') AS page_location,
+    t.device.category AS device_category,
+    t.device.operating_system AS device_os,
+    t.traffic_source.source AS traffic_source,
+    t.traffic_source.medium AS traffic_medium
   FROM `wallabi-169712.analytics_341158348.events_*` t
   WHERE _TABLE_SUFFIX BETWEEN (SELECT start_date FROM DateRange) AND (SELECT end_date FROM DateRange)
     AND t.event_name = 'page_view'
-    AND (t.device.web_info.hostname IS NULL
-         OR (ENDS_WITH(t.device.web_info.hostname, 'walla.co.il')
-             AND NOT REGEXP_CONTAINS(t.device.web_info.hostname, r'demo|dev')))
-    AND NOT REGEXP_CONTAINS(
-          COALESCE((SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'page_location'), ''),
-          r'mail|Mail|friends|mobile=1|hamal'
-        )
+    AND (t.device.web_info.hostname IS NULL OR (ENDS_WITH(t.device.web_info.hostname, 'walla.co.il') AND NOT REGEXP_CONTAINS(t.device.web_info.hostname, r'demo|dev')))
+    AND NOT REGEXP_CONTAINS(COALESCE((SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'page_location'), ''), r"mail|Mail|friends|mobile=1|hamal")
 ),
 
 -- ============================================================
@@ -112,21 +94,17 @@ Web_Classified AS (
     r.vertical_name,
     r.device_category,
     r.device_os,
-    r.page_location,
+    r.hostname,
     r.traffic_source,
     r.traffic_medium,
-    CASE
-      WHEN r.item_id IS NULL
-           AND r.hostname = 'www.walla.co.il'
-           AND r.page_location IN ('https://www.walla.co.il/', 'https://www.walla.co.il')
-           AND r.vertical_name = 'וואלה'                                                    THEN 'homepage'
-      WHEN r.item_id IS NULL
-           AND (r.vertical_name IS NOT NULL OR r.CategoryName IS NOT NULL)
-           AND NOT STARTS_WITH(r.hostname, 'www.')
-           AND REGEXP_CONTAINS(r.page_location, r'^https?://[^/]+/$')                       THEN 'section_page'
-      WHEN REGEXP_CONTAINS(r.page_location, r'/break/[0-9]+($|\?)')                         THEN 'newsflash'
-      WHEN d.tohash IS NOT NULL AND d.tohash != ''                                           THEN 'sponsored_content'
-      WHEN REGEXP_CONTAINS(r.page_location, r'/item/[0-9]+($|\?)')                          THEN 'item'
+    CASE 
+      WHEN r.item_id IS NULL AND r.hostname = 'www.walla.co.il' AND (r.page_location = 'https://www.walla.co.il/' OR r.page_location = 'https://www.walla.co.il') 
+      AND r.vertical_name = 'וואלה' THEN 'homepage'
+      WHEN r.item_id IS NULL AND (r.vertical_name IS NOT NULL OR r.CategoryName IS NOT NULL) AND NOT STARTS_WITH(r.hostname, 'www.') 
+      AND REGEXP_CONTAINS(r.page_location, r'^https?://[^/]+/$') THEN 'section_page'
+      WHEN REGEXP_CONTAINS(r.page_location, r'/break/[0-9]+($|\?)') THEN 'newsflash'
+      WHEN d.tohash IS NOT NULL AND d.tohash != '' THEN 'sponsored_content'
+      WHEN REGEXP_CONTAINS(r.page_location, r'/item/[0-9]+($|\?)') THEN 'item'
       ELSE 'other'
     END AS page_type
   FROM Web_Raw r
@@ -138,42 +116,42 @@ Web_Classified AS (
 -- ============================================================
 Web_Final_Metrics AS (
   SELECT
-    'Web'                                                                   AS platform,
+    'Web' AS platform,
     page_type,
     event_date,
     item_id,
     vertical_name,
     device_category,
     device_os,
-    page_location,
+    hostname,
     traffic_source,
     traffic_medium,
-    COUNT(*)                                                                AS total_views,
-    HLL_COUNT.INIT(user_pseudo_id)                                          AS users_sketch,
-    HLL_COUNT.INIT(CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING)))   AS sessions_sketch
+    COUNT(*) AS total_views,
+    HLL_COUNT.INIT(user_pseudo_id) AS users_sketch,
+    HLL_COUNT.INIT(CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING))) AS sessions_sketch
   FROM Web_Classified
   GROUP BY platform, page_type, event_date, item_id, vertical_name,
-           device_category, device_os, page_location, traffic_source, traffic_medium
+           device_category, device_os, hostname, traffic_source, traffic_medium
 ),
 
 -- ============================================================
--- WALLA APP: נתונים גולמיים
+-- WALLA APP
 -- ============================================================
 Walla_App_Raw AS (
   SELECT
-    PARSE_DATE('%Y%m%d', t.event_date)                                                                                                          AS event_date,
+    PARSE_DATE('%Y%m%d', t.event_date) AS event_date,
     t.user_pseudo_id,
-    (SELECT p.value.int_value FROM UNNEST(t.event_params) p WHERE p.key = 'ga_session_id')                                                     AS ga_session_id,
-    (SELECT COALESCE(CAST(p.value.int_value AS STRING), p.value.string_value) FROM UNNEST(t.event_params) p WHERE p.key = 'item_id')            AS item_id,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'item_type')                                                       AS item_type,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'firebase_screen_class')                                           AS firebase_screen_class,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'vertical_name')                                                   AS vertical_name,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'tohash')                                                          AS tohash,
-    t.device.category                                                                                                                            AS device_category,
-    t.device.operating_system                                                                                                                    AS device_os,
-    CAST(NULL AS STRING)                                                                                                                         AS traffic_source,
-    CAST(NULL AS STRING)                                                                                                                         AS traffic_medium,
-    CAST(NULL AS STRING)                                                                                                                         AS page_location
+    (SELECT p.value.int_value FROM UNNEST(t.event_params) p WHERE p.key = 'ga_session_id') AS ga_session_id,
+    (SELECT COALESCE(CAST(p.value.int_value AS STRING), p.value.string_value) FROM UNNEST(t.event_params) p WHERE p.key = 'item_id') AS item_id,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'item_type') AS item_type,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'firebase_screen_class') AS firebase_screen_class,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'vertical_name') AS vertical_name,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'tohash') AS tohash,
+    t.device.category AS device_category,
+    t.device.operating_system AS device_os,
+    CAST(NULL AS STRING) AS traffic_source,
+    CAST(NULL AS STRING) AS traffic_medium,
+    CAST(NULL AS STRING) AS hostname
   FROM `wallabi-169712.analytics_341158348.events_*` t
   WHERE _TABLE_SUFFIX BETWEEN (SELECT start_date FROM DateRange) AND (SELECT end_date FROM DateRange)
     AND t.event_name = 'screen_view'
@@ -181,18 +159,10 @@ Walla_App_Raw AS (
 
 Walla_App_Classified AS (
   SELECT
-    event_date,
-    user_pseudo_id,
-    ga_session_id,
-    item_id,
-    vertical_name,
-    device_category,
-    device_os,
-    traffic_source,
-    traffic_medium,
-    page_location,
+    event_date, user_pseudo_id, ga_session_id, item_id, vertical_name,
+    device_category, device_os, traffic_source, traffic_medium, hostname,
     CASE
-      WHEN tohash IS NOT NULL AND tohash != ''                                                                          THEN 'sponsored_content'
+      WHEN tohash IS NOT NULL AND tohash != ''                                                                         THEN 'sponsored_content'
       WHEN item_id IS NULL AND vertical_name IS NULL     AND firebase_screen_class = 'homepage'                        THEN 'homepage'
       WHEN item_id IS NULL AND vertical_name = 'homepage' AND firebase_screen_class = 'MainActivity'                   THEN 'homepage'
       WHEN item_id IS NULL AND vertical_name IS NOT NULL AND firebase_screen_class IN ('category', 'MainActivity')     THEN 'section_page'
@@ -204,67 +174,49 @@ Walla_App_Classified AS (
 ),
 
 Walla_App_Final_Metrics AS (
-  -- כל סוגי הדפים חוץ מ-section_page: מקובץ לפי item_id, ללא vertical_name
   SELECT
-    'Walla_App'          AS platform,
-    page_type,
-    event_date,
-    item_id,
+    'Walla_App' AS platform, page_type, event_date, item_id,
     CAST(NULL AS STRING) AS vertical_name,
-    device_category,
-    device_os,
-    page_location,
-    traffic_source,
-    traffic_medium,
-    COUNT(*)                                                                AS total_views,
-    HLL_COUNT.INIT(user_pseudo_id)                                          AS users_sketch,
-    HLL_COUNT.INIT(CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING)))   AS sessions_sketch
+    device_category, device_os, hostname, traffic_source, traffic_medium,
+    COUNT(*) AS total_views,
+    HLL_COUNT.INIT(user_pseudo_id) AS users_sketch,
+    HLL_COUNT.INIT(CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING))) AS sessions_sketch
   FROM Walla_App_Classified
   WHERE page_type != 'section_page'
-  GROUP BY platform, page_type, event_date, item_id,
-           device_category, device_os, page_location, traffic_source, traffic_medium
+  GROUP BY platform, page_type, event_date, item_id, device_category, device_os, hostname, traffic_source, traffic_medium
 
   UNION ALL
 
-  -- section_page: מקובץ לפי vertical_name, ללא item_id
   SELECT
-    'Walla_App'          AS platform,
-    page_type,
-    event_date,
-    CAST(NULL AS STRING) AS item_id,
-    vertical_name,
-    device_category,
-    device_os,
-    page_location,
-    traffic_source,
-    traffic_medium,
-    COUNT(*)                                                                AS total_views,
-    HLL_COUNT.INIT(user_pseudo_id)                                          AS users_sketch,
-    HLL_COUNT.INIT(CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING)))   AS sessions_sketch
+    'Walla_App' AS platform, page_type, event_date,
+    CAST(NULL AS STRING) AS item_id, vertical_name,
+    device_category, device_os, hostname, traffic_source, traffic_medium,
+    COUNT(*) AS total_views,
+    HLL_COUNT.INIT(user_pseudo_id) AS users_sketch,
+    HLL_COUNT.INIT(CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING))) AS sessions_sketch
   FROM Walla_App_Classified
   WHERE page_type = 'section_page'
-  GROUP BY platform, page_type, event_date, vertical_name,
-           device_category, device_os, page_location, traffic_source, traffic_medium
+  GROUP BY platform, page_type, event_date, vertical_name, device_category, device_os, hostname, traffic_source, traffic_medium
 ),
 
 -- ============================================================
--- SPORT APP: נתונים גולמיים
+-- SPORT APP
 -- ============================================================
 Sport_App_Raw AS (
   SELECT
-    PARSE_DATE('%Y%m%d', t.event_date)                                                                                                          AS event_date,
+    PARSE_DATE('%Y%m%d', t.event_date) AS event_date,
     t.user_pseudo_id,
-    (SELECT p.value.int_value FROM UNNEST(t.event_params) p WHERE p.key = 'ga_session_id')                                                     AS ga_session_id,
-    (SELECT COALESCE(CAST(p.value.int_value AS STRING), p.value.string_value) FROM UNNEST(t.event_params) p WHERE p.key = 'item_id')            AS item_id,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'item_type')                                                       AS item_type,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'firebase_screen_class')                                           AS firebase_screen_class,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'vertical_name')                                                   AS vertical_name,
-    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'tohash')                                                          AS tohash,
-    t.device.category                                                                                                                            AS device_category,
-    t.device.operating_system                                                                                                                    AS device_os,
-    CAST(NULL AS STRING)                                                                                                                         AS traffic_source,
-    CAST(NULL AS STRING)                                                                                                                         AS traffic_medium,
-    CAST(NULL AS STRING)                                                                                                                         AS page_location
+    (SELECT p.value.int_value FROM UNNEST(t.event_params) p WHERE p.key = 'ga_session_id') AS ga_session_id,
+    (SELECT COALESCE(CAST(p.value.int_value AS STRING), p.value.string_value) FROM UNNEST(t.event_params) p WHERE p.key = 'item_id') AS item_id,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'item_type') AS item_type,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'firebase_screen_class') AS firebase_screen_class,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'vertical_name') AS vertical_name,
+    (SELECT p.value.string_value FROM UNNEST(t.event_params) p WHERE p.key = 'tohash') AS tohash,
+    t.device.category AS device_category,
+    t.device.operating_system AS device_os,
+    CAST(NULL AS STRING) AS traffic_source,
+    CAST(NULL AS STRING) AS traffic_medium,
+    CAST(NULL AS STRING) AS hostname
   FROM `wallabi-169712.analytics_375212362.events_*` t
   WHERE _TABLE_SUFFIX BETWEEN (SELECT start_date FROM DateRange) AND (SELECT end_date FROM DateRange)
     AND t.event_name = 'screen_view'
@@ -272,17 +224,10 @@ Sport_App_Raw AS (
 
 Sport_App_Classified AS (
   SELECT
-    event_date,
-    user_pseudo_id,
-    ga_session_id,
-    item_id,
-    device_category,
-    device_os,
-    traffic_source,
-    traffic_medium,
-    page_location,
+    event_date, user_pseudo_id, ga_session_id, item_id,
+    device_category, device_os, traffic_source, traffic_medium, hostname,
     CASE
-      WHEN tohash IS NOT NULL AND tohash != ''                                                               THEN 'sponsored_content'
+      WHEN tohash IS NOT NULL AND tohash != ''                                                              THEN 'sponsored_content'
       WHEN item_id IS NULL AND vertical_name IS NULL AND firebase_screen_class = 'homepage'                 THEN 'section_page'
       WHEN item_id IS NOT NULL AND (item_type = 'newsflash' OR firebase_screen_class = 'newsflash')         THEN 'newsflash'
       WHEN item_id IS NOT NULL AND (item_type != 'newsflash' OR firebase_screen_class != 'newsflash')       THEN 'item'
@@ -294,22 +239,14 @@ Sport_App_Classified AS (
 
 Sport_App_Final_Metrics AS (
   SELECT
-    'Sport_App'          AS platform,
-    page_type,
-    event_date,
-    item_id,
-    vertical_name,
-    device_category,
-    device_os,
-    page_location,
-    traffic_source,
-    traffic_medium,
-    COUNT(*)                                                                AS total_views,
-    HLL_COUNT.INIT(user_pseudo_id)                                          AS users_sketch,
-    HLL_COUNT.INIT(CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING)))   AS sessions_sketch
+    'Sport_App' AS platform, page_type, event_date, item_id, vertical_name,
+    device_category, device_os, hostname, traffic_source, traffic_medium,
+    COUNT(*) AS total_views,
+    HLL_COUNT.INIT(user_pseudo_id) AS users_sketch,
+    HLL_COUNT.INIT(CONCAT(user_pseudo_id, CAST(ga_session_id AS STRING))) AS sessions_sketch
   FROM Sport_App_Classified
   GROUP BY platform, page_type, event_date, item_id, vertical_name,
-           device_category, device_os, page_location, traffic_source, traffic_medium
+           device_category, device_os, hostname, traffic_source, traffic_medium
 ),
 
 -- ============================================================
@@ -317,43 +254,34 @@ Sport_App_Final_Metrics AS (
 -- ============================================================
 Metrics_Union AS (
   SELECT platform, page_type, event_date, item_id, vertical_name,
-         device_category, device_os, page_location, traffic_source, traffic_medium,
+         device_category, device_os, hostname, traffic_source, traffic_medium,
          total_views, users_sketch, sessions_sketch
   FROM Web_Final_Metrics
   UNION ALL
   SELECT platform, page_type, event_date, item_id, vertical_name,
-         device_category, device_os, page_location, traffic_source, traffic_medium,
+         device_category, device_os, hostname, traffic_source, traffic_medium,
          total_views, users_sketch, sessions_sketch
   FROM Walla_App_Final_Metrics
   UNION ALL
   SELECT platform, page_type, event_date, item_id, vertical_name,
-         device_category, device_os, page_location, traffic_source, traffic_medium,
+         device_category, device_os, hostname, traffic_source, traffic_medium,
          total_views, users_sketch, sessions_sketch
   FROM Sport_App_Final_Metrics
 ),
 
 -- ============================================================
--- חיבור מטא-דאטה (מגיע רק ממילון ה-Web)
+-- חיבור מטא-דאטה
 -- ============================================================
 Final_Consolidated_Data AS (
   SELECT
-    u.platform,
-    u.page_type,
-    u.event_date,
-    u.item_id,
-    u.device_category,
-    u.device_os,
-    u.page_location,
-    u.traffic_source,
-    u.traffic_medium,
-    u.users_sketch,
-    u.sessions_sketch,
-    COALESCE(u.vertical_name, d.vertical_name)        AS vertical_name,
+    u.platform, u.page_type, u.event_date, u.item_id,
+    u.device_category, u.device_os, u.hostname,
+    u.traffic_source, u.traffic_medium,
+    u.users_sketch, u.sessions_sketch,
+    COALESCE(u.vertical_name, d.vertical_name) AS vertical_name,
     d.item_title,
-    COALESCE(d.item_author, d.content_provider)       AS item_author_provider,
-    d.CategoryName,
-    d.created_by_username,
-    d.tohash,
+    COALESCE(d.item_author, d.content_provider) AS item_author_provider,
+    d.CategoryName, d.created_by_username, d.tohash,
     DATE(SAFE.PARSE_DATETIME('%H:%M %d/%m/%Y', d.item_publication_date)) AS item_publication_date,
     u.total_views
   FROM Metrics_Union u
@@ -361,26 +289,14 @@ Final_Consolidated_Data AS (
 ),
 
 -- ============================================================
--- אגרגציה סופית + מיזוג HLL sketches
+-- אגרגציה סופית
 -- ============================================================
 Final AS (
   SELECT
-    platform,
-    page_type,
-    event_date,
-    item_id,
-    vertical_name,
-    item_title,
-    item_author_provider,
-    CategoryName,
-    created_by_username,
-    tohash,
-    item_publication_date,
-    device_category,
-    device_os,
-    page_location,
-    traffic_source,
-    traffic_medium,
+    platform, page_type, event_date, item_id, vertical_name,
+    item_title, item_author_provider, CategoryName, created_by_username,
+    tohash, item_publication_date, device_category, device_os,
+    hostname, traffic_source, traffic_medium,
     SUM(total_views)                         AS total_views,
     HLL_COUNT.MERGE_PARTIAL(users_sketch)    AS users_sketch,
     HLL_COUNT.MERGE_PARTIAL(sessions_sketch) AS sessions_sketch
@@ -389,13 +305,13 @@ Final AS (
     platform, page_type, event_date, item_id, vertical_name,
     item_title, item_author_provider, CategoryName, created_by_username,
     tohash, item_publication_date, device_category, device_os,
-    page_location, traffic_source, traffic_medium
+    hostname, traffic_source, traffic_medium
 )
 
 SELECT * FROM Final;
 
 -- ============================================================
--- שלב 3: ניקוי נתונים ישנים מעל 14 חודש (rolling window)
+-- שלב 3: ניקוי נתונים ישנים מעל 14 חודש
 -- ============================================================
 DELETE FROM `wallabi-169712.Walla_Daily_Reports.editorial_performance_daily_v2`
 WHERE event_date < DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 14 MONTH), MONTH);
