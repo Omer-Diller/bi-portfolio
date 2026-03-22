@@ -45,10 +45,18 @@ Built as a web app using Python and deployed online, so it's accessible from any
 
 **How it works:**
 - Manager types a question in Hebrew (e.g. "how many articles were published this week by author?")
-- Gemini 2.5 Flash translates it to SQL
-- BigQuery runs the query on the data warehouse
-- Results appear as a table + automatic chart
+- Gemini 2.5 Flash translates the question into a database query
+- BigQuery fetches the data
+- Results appear as a table + automatic chart when relevant
+- The AI explains what it looked for and shares one insight about the results
 - One click to download as Excel
+
+**Problems I solved along the way:**
+- The data had counting errors when video data was combined with article data — fixed by keeping them in two separate tables
+- Storing the full page URL caused thousands of duplicate rows — fixed by storing only the website domain name
+- Counting unique visitors on millions of rows was slow — solved using a fast estimation method that stays accurate enough for business decisions
+- The AI didn't always know what type of content to look for — solved by teaching it clear rules about when to filter by content type
+- One content creator was incorrectly grouped under "News" — fixed by giving them their own category so news numbers stay accurate
 
 **Built with:** Python · Streamlit · Google Gemini 2.5 Flash · BigQuery · Plotly · Streamlit Cloud
 
@@ -68,15 +76,17 @@ bi-portfolio/
 │   │   └── rolling_7day_average.sql
 │   └── v2-editorial-pipeline/
 │       ├── editorial_performance_daily_v2.sql
-│       ├── editorial_staff_mapping_view.sql
 │       ├── editorial_video_daily.sql
 │       ├── Mart_Content_Performance_CREATE.sql
-│       └── Mart_Content_Performance_scheduled.sql
+│       ├── Mart_Content_Performance_scheduled.sql
+│       ├── Mart_Video_Performance_CREATE.sql
+│       └── Mart_Video_Performance_scheduled.sql
 ├── dashboards/
 │   └── walla-ai-dashboard/
 │       ├── app.py
 │       ├── requirements.txt
-│       └── PROJECT_STORY.md
+│       ├── PROJECT_STORY.md
+│       └── HOW_I_BUILT_IT.md
 └── screenshots/
     ├── looker-studio-dashboard/
     └── walla-ai-dashboard/
@@ -92,6 +102,7 @@ bi-portfolio/
 | GA4 event data processing | `editorial_performance_daily_v2.sql` |
 | HLL sketches for unique user counts | `v2-editorial-pipeline/` |
 | Multi-platform pipeline (Web + App) | `editorial_performance_daily_v2.sql` |
+| MART table design (avoiding duplications) | `Mart_Content_Performance_CREATE.sql` |
 | Looker Studio (data blending, calculated fields) | `screenshots/looker-studio-dashboard/` |
 | Python (Streamlit, Pandas, Plotly) | `app.py` |
 | Prompt Engineering (Hebrew → SQL) | `app.py` |
@@ -153,9 +164,17 @@ bi-portfolio/
 **איך זה עובד:**
 - המנהל כותב שאלה בעברית (למשל: "כמה כתבות פורסמו השבוע לפי כתב?")
 - Gemini 2.5 Flash מתרגם לSQL
-- BigQuery מריץ את השאילתה על מחסן הנתונים
-- התוצאות מוצגות כטבלה + גרף אוטומטי
+- BigQuery מריץ את השאילתה על שתי טבלאות MART נפרדות (תוכן + וידאו)
+- התוצאות מוצגות כטבלה + גרף חכם אוטומטי
+- ה-AI מסביר מה חיפש ונותן תובנה על התוצאות
 - לחיצה אחת להורדה לאקסל
+
+**החלטות טכניות מרכזיות:**
+- שתי טבלאות MART נפרדות למניעת כפילויות ב-JOIN
+- `hostname` במקום URL מלא לצמצום גרנולריות
+- HLL sketches לספירת גולשים ייחודיים מהירה
+- לוגיקת `page_type` — ה-AI יודע מתי לסנן לפי סוג תוכן
+- "אסור לפספס" כמדור נפרד כדי לשמור על נקיות נתוני החדשות
 
 **טכנולוגיות:** Python · Streamlit · Google Gemini 2.5 Flash · BigQuery · Plotly · Streamlit Cloud
 
@@ -171,6 +190,7 @@ bi-portfolio/
 | עיבוד נתוני GA4 | `editorial_performance_daily_v2.sql` |
 | HLL sketches לספירת גולשים ייחודיים | `v2-editorial-pipeline/` |
 | פייפליין רב-פלטפורמי (Web + App) | `editorial_performance_daily_v2.sql` |
+| עיצוב טבלאות MART (מניעת כפילויות) | `Mart_Content_Performance_CREATE.sql` |
 | Looker Studio (data blending, calculated fields) | `screenshots/looker-studio-dashboard/` |
 | Python (Streamlit, Pandas, Plotly) | `app.py` |
 | Prompt Engineering (עברית → SQL) | `app.py` |
