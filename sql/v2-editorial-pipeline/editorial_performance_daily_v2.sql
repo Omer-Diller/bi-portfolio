@@ -1,9 +1,7 @@
--- שלב 1: מחיקת 5 הימים האחרונים (לפני INSERT מחדש)
 DELETE FROM `wallabi-169712.Walla_Daily_Reports.editorial_performance_daily_v2`
 WHERE event_date BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 05 DAY)
 AND DATE_SUB(CURRENT_DATE(), INTERVAL 00 DAY);
 
--- שלב 2: INSERT מחדש עם נתונים מורחבים
 INSERT INTO `wallabi-169712.Walla_Daily_Reports.editorial_performance_daily_v2` (
   platform,
   page_type,
