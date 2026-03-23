@@ -1,8 +1,6 @@
 DELETE FROM `wallabi-169712.Walla_Daily_Reports.editorial_video_daily`
-WHERE event_date BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 5 DAY)
-  AND CURRENT_DATE();
+WHERE event_date BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 5 DAY) AND CURRENT_DATE();
 
--- שלב 2: INSERT מחדש
 INSERT INTO `wallabi-169712.Walla_Daily_Reports.editorial_video_daily` (
   event_date,
   item_id,
